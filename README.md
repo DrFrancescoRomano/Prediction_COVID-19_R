@@ -70,7 +70,7 @@ p <- ggplot(cases_cleaned, aes(x = as.Date(paste(Date_year, Date_month, Date_day
   scale_y_continuous(labels = scales::comma) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
-!
+![New COVID-19 Cases Over Time](https://github.com/DrFrancescoRomano/Prediction_COVID-19_R/blob/main/images/CovidRplot1.png)
 
 
 ### 2. COVID-19 Cases by Location (World Map)
@@ -83,6 +83,9 @@ p2 <- ggplot() +
   labs(title = "New COVID-19 Cases by Location", x = "Longitude", y = "Latitude") +
   theme_minimal()
 ```
+![COVID-19 Cases by Location](https://github.com/DrFrancescoRomano/Prediction_COVID-19_R/blob/main/images/RplotMAP.png)
+
+
 ### 3. Total Cumulative Cases by Country
 A bar chart showing the total cumulative COVID-19 cases for each country, sorted by the number of cases.
 ```r
@@ -93,6 +96,9 @@ p3 <- ggplot(cases_cleaned, aes(x = reorder(Country, Cumulative_cases), y = Cumu
   labs(title = "Total Cumulative Cases by Country", x = "Country", y = "Cumulative Cases") +
   theme(axis.text.y = element_text(size = 3))
 ```
+![Total Cumulative Cases by Country](https://github.com/DrFrancescoRomano/Prediction_COVID-19_R/blob/main/images/CovidRplot3.png)
+
+
 
 ## Predictive Modeling
 Three models were trained to predict cumulative deaths:
