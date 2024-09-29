@@ -52,6 +52,8 @@ summary(cases_cleaned)
 # Correlation matrix
 correlation_matrix <- cor(cases_cleaned)
 ```
+![Correlation Matrix](https://github.com/DrFrancescoRomano/Prediction_COVID-19_R/blob/main/images/CorrCOVID19.png)
+
 
 ## Visualization
 Several visualizations were created to explore the trends in the data.
@@ -68,6 +70,9 @@ p <- ggplot(cases_cleaned, aes(x = as.Date(paste(Date_year, Date_month, Date_day
   scale_y_continuous(labels = scales::comma) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
+!
+
+
 ### 2. COVID-19 Cases by Location (World Map)
 A world map showing the geographical distribution of new COVID-19 cases, with color and size representing the number of new cases.
 ```r
