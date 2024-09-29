@@ -146,9 +146,11 @@ p4 <- ggplot(cases_1, aes(x = as.Date(paste(Date_year, Date_month, Date_day, sep
   geom_line() +
   facet_wrap(~ Country, scales = "free_y") +
   labs(title = "New COVID-19 Cases Over Time by Country", x = "Date", y = "New Cases") +
+  theme(
+    axis.text.y = element_text(size = 5),
+    strip.text = element_text(size = 6)
+  )
   
-    axis.text.y = element_text(size = 5), 
-    strip.text = element_text(size = 6)   
   
 p4
 
@@ -218,7 +220,8 @@ xgb_model <- xgboost(
   objective = "reg:squarederror",
   eval_metric = "rmse",          
   early_stopping_rounds = 10,    
-  verbose = 0                    
+  verbose = 0      
+)
 
 # Predictions and RMSE calculation
 preds <- predict(xgb_model, x_test_matrix)
