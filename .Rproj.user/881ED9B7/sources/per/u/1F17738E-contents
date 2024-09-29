@@ -1,0 +1,152 @@
+# Install necessary packages
+install.packages(c("dplyr", "caret", "readr", "yardstick", "pROC", "boot", "zoo", "ggplot2", "lubridate", "xgboost"))
+
+# Load libraries
+library(dplyr)
+library(caret)
+library(readr)
+library(yardstick)
+library(pROC)
+library(boot)
+library(zoo)
+library(ggplot2)
+library(lubridate)
+library(xgboost)
+
+# Read the dataset
+cases <- read_csv("WHO COVID-19 cases.csv", show_col_types = FALSE)
+countries <- read_csv("countries.csv", show_col_types = FALSE)
+
+# Data Exploration
+str(cases) # Structure of the dataset
+dim(cases) # Dimensions of the dataset
+summary(cases) # Summary statistics
+
+# Check for missing values in each column
+missing_values <- colSums(is.na(cases))
+print(missing_values)
+
+# Remove rows where Country_code or WHO_region is NA
+cases <- cases %>%
+  filter(!is.na(Country_code) & !is.na(WHO_region))
+
+# Interpolation for New_cases and New_deaths
+cases <- cases %>%
+  arrange(Country_code, Date_reported) %>%
+  group_by(Country_code) %>%
+  mutate(New_cases = na.approx(New_cases, na.rm = FALSE),
+         New_deaths = na.approx(New_deaths, na.rm = FALSE)) %>%
+  ungroup() %>%
+  mutate(New_cases = ifelse(is.na(New_cases), 0, New_cases),
+         New_deaths = ifelse(is.na(New_deaths), 0, New_deaths))
+
+# Recheck for missing values
+missing_values_after <- colSums(is.na(cases))
+print(missing_values_after)
+
+# Merge with coordinates dataset
+cases_with_coords <- cases %>%
+  left_join(countries, by = c("Country_code" = "country")) %>%
+  na.omit()
+
+# Summary statistics after merge
+summary(cases_with_coords)
+
+# Creating new date features
+cases_cleaned <- cases_with_coords %>%
+  mutate(Date_reported = as.Date(Date_reported),
+         Date_year = year(Date_reported),
+         Date_month = month(Date_reported),
+         Date_day = day(Date_reported)) %>%
+  select(-Country_code, -Date_reported) # Remove unnecessary columns
+
+# Encoding categorical variables
+cases_cleaned$Country <- as.numeric(factor(cases_cleaned$Country))
+cases_cleaned$Continent <- as.numeric(factor(cases_cleaned$Continent))
+cases_cleaned$WHO_region <- as.numeric(factor(cases_cleaned$WHO_region))
+cases_cleaned$name <- as.numeric(factor(cases_cleaned$name))
+
+# Prepare the dataset for modeling
+x <- cases_cleaned %>% select(-Cumulative_deaths) # Features
+y <- cases_cleaned$Cumulative_deaths # Target variable
+
+# Scale features and target variable
+x_scaled <- as.data.frame(scale(x))
+y_scaled <- scale(as.data.frame(y))
+
+# Split dataset into training and testing sets
+set.seed(42) # For reproducibility
+train_index <- createDataPartition(y_scaled, p = 0.8, list = FALSE)
+x_train <- x_scaled[train_index, ]
+x_test <- x_scaled[-train_index, ]
+y_train <- y_scaled[train_index, ]
+y_test <- y_scaled[-train_index, ]
+
+# Model Training with various algorithms
+
+# Set up cross-validation
+train_control <- trainControl(method = "cv", number = 5)
+
+# Linear Regression
+model_lm <- train(x_train, y_train, method = "lm", trControl = train_control)
+predictions_lm <- predict(model_lm, newdata = x_test)
+mse_lm <- mean((predictions_lm - y_test) ^ 2)
+r_squared_lm <- summary(model_lm)$r.squared
+
+# Lasso Regression
+model_lasso <- train(x_train, y_train, method = "lasso", trControl = train_control)
+predictions_lasso <- predict(model_lasso, newdata = x_test)
+mse_lasso <- mean((predictions_lasso - y_test) ^ 2)
+r_squared_lasso <- summary(model_lasso)$r.squared
+
+# ElasticNet Regression
+model_en <- train(x_train, y_train, method = "glmnet", trControl = train_control, 
+                  tuneGrid = expand.grid(alpha = 0.5, lambda = c(0.01, 0.1, 1, 10)))
+predictions_en <- predict(model_en, newdata = x_test)
+mse_en <- mean((predictions_en - y_test) ^ 2)
+r_squared_en <- summary(model_en)$r.squared
+
+# XGBoost Model
+dtrain <- xgb.DMatrix(data = as.matrix(x_train), label = y_train)
+dtest <- xgb.DMatrix(data = as.matrix(x_test), label = y_test)
+
+params <- list(objective = "reg:squarederror", eta = 0.1, max_depth = 6)
+model_xgb <- xgb.train(params = params, data = dtrain, nrounds = 100)
+predictions_xgb <- predict(model_xgb, dtest)
+mse_xgb <- mean((predictions_xgb - y_test) ^ 2)
+r_squared_xgb <- cor(predictions_xgb, y_test) ^ 2  # R-squared for XGBoost
+
+# Results Table
+results <- data.frame(
+  Model = c("Linear Regression", "Lasso", "ElasticNet", "XGBoost"),
+  Train_MSE = c(mean((predict(model_lm, newdata = x_train) - y_train) ^ 2),
+                mean((predict(model_lasso, newdata = x_train) - y_train) ^ 2),
+                mean((predict(model_en, newdata = x_train) - y_train) ^ 2),
+                mean((predictions_xgb - y_train) ^ 2)),
+  Test_MSE = c(mse_lm, mse_lasso, mse_en, mse_xgb),
+  Train_R2 = c(r_squared_lm, r_squared_lasso, r_squared_en, r_squared_xgb),
+  Test_R2 = c(1 - mse_lm / var(y_test), 
+              1 - mse_lasso / var(y_test), 
+              1 - mse_en / var(y_test), 
+              1 - mse_xgb / var(y_test)),
+  Ratio_Difference = c(NA, 
+                       abs((1 - mse_lasso / var(y_test)) - (1 - mse_en / var(y_test))) * 100, 
+                       abs((1 - mse_xgb / var(y_test)) - (1 - mse_en / var(y_test))) * 100,
+                       NA)
+)
+
+# Print results
+print(results)
+
+# Optional: Evaluate Overfitting by comparing train and test performance
+train_results <- data.frame(
+  Model = c("Linear Regression", "Lasso", "ElasticNet", "XGBoost"),
+  Train_MSE = c(mean((predict(model_lm, newdata = x_train) - y_train) ^ 2),
+                mean((predict(model_lasso, newdata = x_train) - y_train) ^ 2),
+                mean((predict(model_en, newdata = x_train) - y_train) ^ 2),
+                mean((predictions_xgb - y_train) ^ 2)),
+  Test_MSE = c(mse_lm, mse_lasso, mse_en, mse_xgb)
+)
+
+# Print train results to evaluate overfitting
+print(train_results)

@@ -1,0 +1,271 @@
+install.packages(c("dplyr", "caret", "readr", "yardstick", "pROC", "boot", "zoo", "ggplot2"))
+library(dplyr)
+library(caret)
+library(readr)
+library(yardstick)
+library(pROC)
+library(boot)
+library(zoo)
+library(ggplot2)
+library(maps)
+library(mapdata)
+library(lubridate)
+
+# Read the dataset
+cases <- read_csv("WHO COVID-19 cases.csv", show_col_types = FALSE)
+countries <- read_csv("countries.csv", show_col_types = FALSE)
+
+# View data structure
+str(cases)
+dim(cases)
+
+# Check for missing value in each column
+colSums(is.na(cases))
+
+# delete row nan for Country_code
+cases <- cases %>% 
+  filter(!is.na(Country_code)) # mantiene solo le righe in cui country_code non è nan, le righe nan vengono elliminate
+
+# check for missing value in each column
+colSums(is.na(cases))
+
+cases <- cases %>% 
+  filter(!is.na(WHO_region))
+
+# check for missing value in each column
+colSums(is.na(cases))
+
+
+# facciamo l'interpolazione dei dati nan basandoci sul country_code e mantenendo l'ordine
+#temporale di data_report. L'interpolazione lineare è particolarmente utile per questo tipo di analisi.
+
+# Ordina per Country_code e Date_reported
+cases <- cases %>%
+  arrange(Country_code, Date_reported)
+
+# Applica l'interpolazione per ciascun Paese (Country_code)
+cases <- cases %>%
+  group_by(Country_code) %>%
+  mutate(New_cases = na.approx(New_cases, na.rm = FALSE),  # Interpola 'New_cases'
+         New_deaths = na.approx(New_deaths, na.rm = FALSE))  # Interpola 'New_deaths'
+
+# check for missing value in each column
+colSums(is.na(cases))
+
+cases <- cases %>%
+  mutate(
+    New_cases = ifelse(is.na(New_cases), 0, New_cases),  # Sostituisci eventuali NA con 0
+    New_deaths = ifelse(is.na(New_deaths), 0, New_deaths)
+  )
+
+# check for missing value in each column
+colSums(is.na(cases))
+
+# statistics
+summary(cases)
+
+# Grafics
+
+# Filtro i dati per un Paese specifico, ad esempio Andorra ('AD')
+# Elenco dei Paesi disponibili nel dataset
+unique(cases$Country_code) # visualizza i paesi disponibili
+
+cases_country <- cases %>%
+  filter(Country_code == "IT")  # Ad esempio, "IT" per l'Italia
+
+# Estrai il nome del Paese o il codice da inserire nel titolo
+country_name <- unique(cases_country$Country_code)
+
+# Grafico per i nuovi casi di COVID-19 in X
+ggplot(cases_country, aes(x = Date_reported, y = New_cases)) +
+  geom_line(color = "blue") +
+  geom_point(color = "red") +
+  labs(title = paste("Andamento dei Nuovi Casi di COVID-19 in", country_name),
+       x = "Data",
+       y = "Nuovi Casi") +
+  theme_minimal()
+
+# Grafico per i nuovi decessi di COVID-19 in X
+ggplot(cases_country, aes(x = Date_reported, y = New_deaths)) +
+  geom_line(color = "green") +
+  geom_point(color = "red") +
+  labs(title = paste("Andamento dei Nuovi Decessi di COVID-19 in", country_name),
+       x = "Data",
+       y = "Nuovi Decessi") +
+  theme_minimal()
+
+## DINAMICAMENTE
+plot_country_data <- function(country_code) {
+  # Filtra il dataset per il Paese scelto
+  cases_country <- cases %>%
+    filter(Country_code == country_code)
+  
+  # Grafico per i nuovi casi
+  p1 <- ggplot(cases_country, aes(x = Date_reported, y = New_cases)) +
+    geom_line(color = "blue") +
+    geom_point(color = "red") +
+    labs(title = paste("Andamento dei Nuovi Casi in", country_code),
+         x = "Data",
+         y = "Nuovi Casi") +
+    theme_minimal()
+  
+  # Grafico per i nuovi decessi
+  p2 <- ggplot(cases_country, aes(x = Date_reported, y = New_deaths)) +
+    geom_line(color = "green") +
+    geom_point(color = "red") +
+    labs(title = paste("Andamento dei Nuovi Decessi in", country_code),
+         x = "Data",
+         y = "Nuovi Decessi") +
+    theme_minimal()
+  
+  # Visualizza i grafici
+  print(p1)
+  print(p2)
+}
+
+# Esempio: visualizza i grafici per Andorra ('AD')
+plot_country_data("IS")
+
+
+### unire dataset
+
+# Unire il dataset 'cases' con 'countries' usando Country_code e country
+cases_with_coords <- cases %>%
+  left_join(countries, by = c("Country_code" = "country"))
+
+# Verifica il risultato
+head(cases_with_coords)
+
+colSums(is.na(cases_with_coords))
+
+
+# Trova i Paesi nel dataset 'cases' che non hanno una corrispondenza in 'countries'
+missing_countries <- cases %>%
+  anti_join(countries, by = c("Country_code" = "country")) %>%
+  distinct(Country_code)
+
+# Visualizza i Paesi mancanti
+missing_countries
+
+
+# elliminare i nan
+cases_cleaned <- na.omit(cases_with_coords)
+
+colSums(is.na(cases_cleaned))
+
+###### MAPS
+# Rimozione di righe con NA
+cases_summary <- cases_with_coords %>%
+  group_by(Country, latitude, longitude) %>%
+  summarise(
+    Total_New_Cases = sum(New_cases, na.rm = TRUE),
+    Total_New_Deaths = sum(New_deaths, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  filter(!is.na(longitude) & !is.na(latitude) & Total_New_Cases > 0 & Total_New_Deaths >= 0)
+
+# Creazione della mappa
+world_map <- map_data("world")
+
+ggplot() +
+  geom_polygon(data = world_map, aes(x = long, y = lat, group = group), fill = "lightgrey", color = "black") +
+  geom_point(data = cases_summary, aes(x = longitude, y = latitude, size = Total_New_Cases, color = Total_New_Deaths), alpha = 0.6) +
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(title = "New COVID-19 Cases and Deaths", 
+       x = "Longitude", 
+       y = "Latitude", 
+       size = "New Cases", 
+       color = "New Deaths") +
+  theme_minimal()
+
+#################################################################################
+
+#Preprocessing
+cases_cleaned <- cases_cleaned %>% 
+  ungroup() %>%  # Rimuovi i gruppi attivi
+  select(-Country_code)  # Ora puoi rimuovere la colonna
+
+
+# Estrai anno, mese e giorno
+cases_cleaned$Date_reported <- as.Date(cases_cleaned$Date_reported)
+cases_cleaned$Date_year <- year(cases_cleaned$Date_reported)
+cases_cleaned$Date_month <- month(cases_cleaned$Date_reported)
+cases_cleaned$Date_day <- day(cases_cleaned$Date_reported)
+
+# Encoding delle variabili categoriche
+cases_cleaned$Country <- as.numeric(factor(cases_cleaned$Country))
+cases_cleaned$Continent <- as.numeric(factor(cases_cleaned$Continent))
+cases_cleaned$WHO_region <- as.numeric(factor(cases_cleaned$WHO_region))
+cases_cleaned$name <- as.numeric(factor(cases_cleaned$name))
+
+# Elliminiamo colonna Date_reporting
+cases_cleaned <- cases_cleaned %>% select(-Date_reported)
+
+# Separazione input e output
+x <- cases_cleaned %>% select(-Cumulative_deaths)  # Scegli la variabile target
+y <- cases_cleaned$Cumulative_deaths  # Variabile target
+
+str(x)
+
+# Scaling delle variabili di input (X)
+x_scaled <- as.data.frame(scale(x))
+
+# Scaling della variabile target (y)
+y_df <- as.data.frame(y)  # Converti y in un dataframe
+y_scaled <- scale(y_df)
+
+# divisione dataset in train e test
+set.seed(42)  # Per riproducibilità
+
+train_index <- createDataPartition(y_scaled, p = 0.8, list = FALSE)
+x_train <- x_scaled[train_index, ]
+x_test <- x_scaled[-train_index, ]
+y_train <- y_scaled[train_index, ]
+y_test <- y_scaled[-train_index, ]
+
+# MODEL
+
+library(xgboost)
+
+# Imposta il numero di fold per la cross-validation
+set.seed(42)
+train_control <- trainControl(method = "cv", number = 5)
+
+# Modello di regressione lineare
+model_lm <- train(x_train, y_train, method = "lm", trControl = train_control)
+predictions_lm <- predict(model_lm, newdata = x_test)
+mse_lm <- mean((predictions_lm - y_test) ^ 2)
+
+
+# Lasso Regression
+model_lasso <- train(x_train, y_train, method = "lasso", trControl = train_control)
+predictions_lasso <- predict(model_lasso, newdata = x_test)
+mse_lasso <- mean((predictions_lasso - y_test) ^ 2)
+
+# ElasticNet
+model_en <- train(x_train, y_train, method = "glmnet", trControl = train_control, 
+                  tuneGrid = expand.grid(alpha = 0.5, lambda = c(0.01, 0.1, 1, 10)))
+predictions_en <- predict(model_en, newdata = x_test)
+mse_en <- mean((predictions_en - y_test) ^ 2)
+
+# Risultati
+results <- data.frame(
+  Model = c("Linear Regression", "Lasso", "glmnet"),
+  MSE = c(mse_lm, mse_lasso, mse_en)
+)
+
+print(results)
+
+
+# Creare la tabella dei risultati con più dettagli
+detailed_results <- data.frame(
+  Model = c("Linear Regression", "Lasso", "ElasticNet"),
+  Train_Score = c(r_squared_lm * 100, r_squared_lasso * 100, r_squared_en * 100),
+  Test_Score = c(1 - mse_lm, 1 - mse_lasso, 1 - mse_en),
+  Ratio_Difference = c(0, abs((1 - mse_lasso) - (1 - mse_en)) * 100, 0),  # Aggiungi un valore 0 per rendere uguali le lunghezze
+  #Evaluate_Model = c("good", "good", "good"),  # Sostituisci con valutazioni appropriate
+  Squared_Error = c(mse_lm, mse_lasso, mse_en)
+)
+
+# Visualizza la tabella dei risultati
+print(detailed_results)
