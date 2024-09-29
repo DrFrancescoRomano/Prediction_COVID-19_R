@@ -118,3 +118,12 @@ results <- data.frame(
 
 ## Conclusion
 In this analysis, we cleaned and explored the WHO COVID-19 dataset, visualized key trends, and developed predictive models to estimate cumulative deaths. The XGBoost model provided the best performance with high accuracy on both the training and test sets.
+
+
+
+## Contact
+
+If you have any questions or suggestions, feel free to contact me:
+
+- **Name**: Francesco Romano
+- **LinkedIn**: [Francesco Romano](https://www.linkedin.com/in/francescoromano03/)
