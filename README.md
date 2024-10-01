@@ -21,7 +21,7 @@ The purpose of this project is to analyze global COVID-19 data, clean and prepro
 
 ## Data Sources
 - **WHO COVID-19 Dataset:** Daily reported cases, cumulative cases, deaths, and cumulative deaths from the World Health Organization.
-- **Geographical Dataset:** Coordinates (latitude, longitude) for each country, used for mapping and geographical analysis.
+- **Geographical Dataset:** Coordinates (latitude, longitude) for each country, used for mapping and geographical analysis.   
 
 ## Data Cleaning and Preprocessing
 ### Key steps:
