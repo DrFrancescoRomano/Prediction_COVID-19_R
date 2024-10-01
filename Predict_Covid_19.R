@@ -21,6 +21,7 @@ library(nnet)    # Neural Network
 library(scales)   
 library(plotly)
 library(ggthemes) 
+library(fastmap)
 
 # --------------------- Data Loading & Exploration ---------------------
 
